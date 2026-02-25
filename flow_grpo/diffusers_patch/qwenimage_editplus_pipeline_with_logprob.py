@@ -1,0 +1,354 @@
+from typing import Any, Dict, List, Optional, Union
+import torch
+import numpy as np
+import random
+import time
+from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import retrieve_timesteps
+from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit_plus import calculate_shift, calculate_dimensions
+from diffusers.image_processor import PipelineImageInput
+from .sd3_sde_with_logprob import sde_step_with_logprob, ode_shortcut_step
+
+
+CONDITION_IMAGE_SIZE = 384 * 384
+VAE_IMAGE_SIZE = 1024 * 1024
+
+
+@torch.no_grad()
+def pipeline_with_logprob(
+    self,
+    image: Optional[PipelineImageInput] = None,
+    prompt: Union[str, List[str]] = None,
+    negative_prompt: Union[str, List[str]] = None,
+    true_cfg_scale: float = 4.0,
+    height: Optional[int] = None,
+    width: Optional[int] = None,
+    num_inference_steps: int = 50,
+    sigmas: Optional[List[float]] = None,
+    guidance_scale: Optional[float] = None,
+    num_images_per_prompt: int = 1,
+    generator: Optional[Union[torch.Generator, List[torch.Generator]]] = None,
+    latents: Optional[torch.Tensor] = None,
+    prompt_embeds: Optional[torch.Tensor] = None,
+    prompt_embeds_mask: Optional[torch.Tensor] = None,
+    negative_prompt_embeds: Optional[torch.Tensor] = None,
+    negative_prompt_embeds_mask: Optional[torch.Tensor] = None,
+    output_type: Optional[str] = "pil",
+    attention_kwargs: Optional[Dict[str, Any]] = None,
+    callback_on_step_end_tensor_inputs: List[str] = ["latents"],
+    max_sequence_length: int = 512,
+    noise_level: float = 0.7,
+    process_index: int = 0,
+    sde_window_size: int = 0,
+    sde_window_range: tuple[int, int] = (0, 5),
+):
+    image_size = image[0].size if isinstance(image, list) else image.size
+    calculated_width, calculated_height, _ = calculate_dimensions(1024 * 1024, image_size[0] / image_size[1])
+    height = height or calculated_height
+    width = width or calculated_width
+
+    multiple_of = self.vae_scale_factor * 2
+    width = width // multiple_of * multiple_of
+    height = height // multiple_of * multiple_of
+    
+    # print('num_images_per_prompt', num_images_per_prompt)
+    # 1. Check inputs. Raise error if not correct
+    self.check_inputs(
+        prompt,
+        height,
+        width,
+        negative_prompt=negative_prompt,
+        prompt_embeds=prompt_embeds,
+        negative_prompt_embeds=negative_prompt_embeds,
+        prompt_embeds_mask=prompt_embeds_mask,
+        negative_prompt_embeds_mask=negative_prompt_embeds_mask,
+        callback_on_step_end_tensor_inputs=callback_on_step_end_tensor_inputs,
+        max_sequence_length=max_sequence_length,
+    )
+
+    self._guidance_scale = guidance_scale
+    self._attention_kwargs = attention_kwargs
+    self._current_timestep = None
+    self._interrupt = False
+
+    # 2. Define call parameters
+    if prompt is not None and isinstance(prompt, str):
+        batch_size = 1
+    elif prompt is not None and isinstance(prompt, list):
+        batch_size = len(prompt)
+    else:
+        batch_size = prompt_embeds.shape[0]
+
+    device = self._execution_device
+
+    # 3. Preprocess image
+    if image is not None and not (isinstance(image, torch.Tensor) and image.size(1) == self.latent_channels):
+        
+        # image = self.image_processor.resize(image, calculated_height, calculated_width)
+        # prompt_image = self.image_processor.preprocess(image, calculated_height, calculated_width)
+        # image = prompt_image.unsqueeze(2)
+        if not isinstance(image, list):
+            image = [image]
+        condition_image_sizes = []
+        condition_images = []
+        vae_image_sizes = []
+        vae_images = []
+        for img in image:
+            image_width, image_height = img.size
+            condition_width, condition_height = calculate_dimensions(
+                CONDITION_IMAGE_SIZE, image_width / image_height
+            )
+            vae_width, vae_height = calculate_dimensions(VAE_IMAGE_SIZE, image_width / image_height)
+            condition_image_sizes.append((condition_width, condition_height))
+            vae_image_sizes.append((vae_width, vae_height))
+            img = self.image_processor.resize(img, condition_height, condition_width)
+            prompt_img = self.image_processor.preprocess(img, vae_height, vae_width)
+            img = prompt_img.unsqueeze(2) 
+            condition_images.append(prompt_img)
+            vae_images.append(img)
+
+
+    has_neg_prompt = negative_prompt is not None or (
+        negative_prompt_embeds is not None and negative_prompt_embeds_mask is not None
+    )
+
+    do_true_cfg = true_cfg_scale > 1 and has_neg_prompt
+    # print('before encode prompt',len(prompt_image), prompt_image.shape, prompt_image[0], prompt)
+    condition_images_temp = [torch.cat([prompt_image, prompt_image], dim=0) for prompt_image in condition_images]
+    prompt_embeds, prompt_embeds_mask = self.encode_prompt(
+        image=condition_images_temp, #prompt_image+prompt_image,
+        prompt=prompt+negative_prompt,
+        prompt_embeds=prompt_embeds,
+        prompt_embeds_mask=prompt_embeds_mask,
+        device=device,
+        num_images_per_prompt=num_images_per_prompt,
+        max_sequence_length=max_sequence_length,
+    )
+    prompt_embeds, negative_prompt_embeds = prompt_embeds.chunk(2, dim=0)
+    prompt_embeds_mask, negative_prompt_embeds_mask = prompt_embeds_mask.chunk(2, dim=0)
+
+    # 4. Prepare latent variables
+    num_channels_latents = self.transformer.config.in_channels // 4
+    # if latents is not None:
+    # vae_images_temp = 
+    latents, image_latents = self.prepare_latents(
+        vae_images,
+        batch_size * num_images_per_prompt,
+        num_channels_latents,
+        height,
+        width,
+        prompt_embeds.dtype,
+        device,
+        generator,
+        latents,
+    )
+    # print("latents",latents[...,0])
+    # img_shapes = [[(1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2)]] * batch_size
+    img_shapes = [
+            [
+                (1, height // self.vae_scale_factor // 2, width // self.vae_scale_factor // 2),
+                *[
+                    (1, vae_height // self.vae_scale_factor // 2, vae_width // self.vae_scale_factor // 2)
+                    for vae_width, vae_height in vae_image_sizes
+                ],
+
+            ]
+        ] * batch_size
+    
+    # print('img shape 1', height, width, calculated_height, calculated_width)
+    # 5. Prepare timesteps
+    sigmas = np.linspace(1.0, 1 / num_inference_steps, num_inference_steps) if sigmas is None else sigmas
+    image_seq_len = latents.shape[1]
+    mu = calculate_shift(
+        image_seq_len,
+        self.scheduler.config.get("base_image_seq_len", 256),
+        self.scheduler.config.get("max_image_seq_len", 4096),
+        self.scheduler.config.get("base_shift", 0.5),
+        self.scheduler.config.get("max_shift", 1.15),
+    )
+    timesteps, num_inference_steps = retrieve_timesteps(
+        self.scheduler,
+        num_inference_steps,
+        device,
+        sigmas=sigmas,
+        mu=mu,
+    )
+    num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+    self._num_timesteps = len(timesteps)
+
+    # handle guidance
+    if self.transformer.config.guidance_embeds and guidance_scale is None:
+        raise ValueError("guidance_scale is required for guidance-distilled model.")
+    elif self.transformer.config.guidance_embeds:
+        guidance = torch.full([1], guidance_scale, device=device, dtype=torch.float32)
+        guidance = guidance.expand(latents.shape[0])
+    elif not self.transformer.config.guidance_embeds and guidance_scale is not None:
+        logger.warning(
+            f"guidance_scale is passed as {guidance_scale}, but ignored since the model is not guidance-distilled."
+        )
+        guidance = None
+    elif not self.transformer.config.guidance_embeds and guidance_scale is None:
+        guidance = None
+    if self.attention_kwargs is None:
+        self._attention_kwargs = {}
+
+    txt_seq_lens = prompt_embeds_mask.sum(dim=1).tolist() if prompt_embeds_mask is not None else None
+    negative_txt_seq_lens = (
+        negative_prompt_embeds_mask.sum(dim=1).tolist() if negative_prompt_embeds_mask is not None else None
+    )
+    
+    random.seed(process_index)
+    # Assuming 10 denoising steps total, sde_window_size=2, sde_window_range=(0, 10), sde_window could be (0, 2), (1, 3), (2, 4), (3, 5), (4, 6), (5, 7), (6, 8), (7, 9), (8, 10)
+    if sde_window_size > 0:
+        # start = random.randint(sde_window_range[0], sde_window_range[1] - sde_window_size)
+        start = sde_window_range[0]
+        end = start + sde_window_size
+        sde_window = (start, end)
+        print('[**LOG**] sde_window', sde_window, 'from', sde_window_range[0], sde_window_range[1] - sde_window_size)
+    else:
+        # Last step is close to image, Gaussian distribution is sharp, probability is large, easy to overflow precision, not participating in training
+        sde_window = (0, len(timesteps)-1)
+
+    # sde_window = (0,1)
+    # 6. Prepare image embeddings
+    all_latents = []
+    all_log_probs = []
+    all_timesteps = []
+
+    # 7. Denoising loop
+    start_time = time.time()
+    self.scheduler.set_begin_index(0)
+    with self.progress_bar(total=num_inference_steps) as progress_bar:
+        for i, t in enumerate(timesteps):
+            if i < sde_window[0]:
+                cur_noise_level = 0
+            elif i == sde_window[0]:
+                cur_noise_level= noise_level
+                all_latents.append(latents)
+            elif i > sde_window[0] and i < sde_window[1]:
+                cur_noise_level = noise_level
+            else:
+                cur_noise_level= 0
+            self._current_timestep = t
+
+            latent_model_input = latents
+            if image_latents is not None:
+                latent_model_input = torch.cat([latents, image_latents], dim=1)
+
+            timestep = t.expand(latents.shape[0]).to(latents.dtype)
+            noise_pred = self.transformer(
+                hidden_states=torch.cat([latent_model_input, latent_model_input], dim=0),
+                timestep=torch.cat([timestep, timestep], dim=0) / 1000,
+                guidance=guidance,
+                encoder_hidden_states_mask=torch.cat([prompt_embeds_mask, negative_prompt_embeds_mask], dim=0),
+                encoder_hidden_states=torch.cat([prompt_embeds, negative_prompt_embeds], dim=0),
+                img_shapes=img_shapes*2,
+                txt_seq_lens=txt_seq_lens+negative_txt_seq_lens,
+            )[0]
+            noise_pred = noise_pred[:, : latents.size(1)]
+            noise_pred, neg_noise_pred = noise_pred.chunk(2, dim=0)
+            comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+
+            cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
+            noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
+            noise_pred = comb_pred * (cond_norm / noise_norm)
+            latents_dtype = latents.dtype
+            if i < sde_window[1]:
+                latents, log_prob, prev_latents_mean, std_dev_t = sde_step_with_logprob(
+                    self.scheduler, 
+                    noise_pred.float(), 
+                    t.unsqueeze(0).repeat(latents.shape[0]), 
+                    latents.float(),
+                    noise_level=cur_noise_level,
+                )
+                if latents.dtype != latents_dtype:
+                    latents = latents.to(latents_dtype)
+                if i >= sde_window[0] and i < sde_window[1]: # todo
+                    all_latents.append(latents)
+                    all_log_probs.append(log_prob)
+                    all_timesteps.append(t)
+                # call the callback, if provided
+                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                    progress_bar.update()
+            else:
+                break
+        shortcut_steps = 2
+        if sde_window_size <= 0:
+            shortcut_steps = 0
+        last_t = timesteps[sde_window[1]]
+        delta_t = (timesteps[-1] - last_t) / shortcut_steps
+        for j in range(shortcut_steps):
+            
+            self._current_timestep = last_t + delta_t * j
+            
+            t = last_t + delta_t * j
+            t_prev = last_t + delta_t * (j+1)
+            if process_index == 9:
+                print(f"In shortcut step {j}")
+                print('offset timestep, t, t_prev',delta_t,t, t_prev, )
+
+            latent_model_input = latents
+            if image_latents is not None:
+                latent_model_input = torch.cat([latents, image_latents], dim=1)
+
+            timestep = t.expand(latents.shape[0]).to(latents.dtype)
+            noise_pred = self.transformer(
+                hidden_states=torch.cat([latent_model_input, latent_model_input], dim=0),
+                timestep=torch.cat([timestep, timestep], dim=0) / 1000,
+                guidance=guidance,
+                encoder_hidden_states_mask=torch.cat([prompt_embeds_mask, negative_prompt_embeds_mask], dim=0),
+                encoder_hidden_states=torch.cat([prompt_embeds, negative_prompt_embeds], dim=0),
+                img_shapes=img_shapes*2,
+                txt_seq_lens=txt_seq_lens+negative_txt_seq_lens,
+            )[0]
+            noise_pred = noise_pred[:, : latents.size(1)]
+            noise_pred, neg_noise_pred = noise_pred.chunk(2, dim=0)
+            comb_pred = neg_noise_pred + true_cfg_scale * (noise_pred - neg_noise_pred)
+
+            cond_norm = torch.norm(noise_pred, dim=-1, keepdim=True)
+            noise_norm = torch.norm(comb_pred, dim=-1, keepdim=True)
+            noise_pred = comb_pred * (cond_norm / noise_norm)
+            latents_dtype = latents.dtype
+            latents, log_prob, prev_latents_mean, std_dev_t = ode_shortcut_step(
+                self.scheduler, 
+                noise_pred.float(), 
+                t.unsqueeze(0).repeat(latents.shape[0]), 
+                t_prev.unsqueeze(0).repeat(latents.shape[0]),
+                latents.float(),
+                noise_level=cur_noise_level,
+            ) 
+            if latents.dtype != latents_dtype:
+                latents = latents.to(latents_dtype)
+
+    if process_index == 0:
+        print('Sampling time:', time.time()-start_time)    
+            
+
+    latents = self._unpack_latents(latents, height, width, self.vae_scale_factor)
+    latents = latents.to(self.vae.dtype)
+    latents_mean = (
+        torch.tensor(self.vae.config.latents_mean)
+        .view(1, self.vae.config.z_dim, 1, 1, 1)
+        .to(latents.device, latents.dtype)
+    )
+    latents_std = 1.0 / torch.tensor(self.vae.config.latents_std).view(1, self.vae.config.z_dim, 1, 1, 1).to(
+        latents.device, latents.dtype
+    )
+    latents = latents / latents_std + latents_mean
+    image = self.vae.decode(latents, return_dict=False)[0][:, :, 0]
+    image = self.image_processor.postprocess(image, output_type=output_type)
+    
+    # Offload all models
+    self.maybe_free_model_hooks()
+    ret = {
+        "images": image,
+        "image_latents": image_latents,
+        "calculated_shape": torch.tensor([calculated_width, calculated_height]*batch_size, dtype=image_latents.dtype, device=image_latents.device),
+        "all_latents": all_latents,
+        "all_log_probs": all_log_probs,
+        "all_timesteps": all_timesteps,
+        "prompt_embeds": prompt_embeds,
+        "negative_prompt_embeds": negative_prompt_embeds,
+        "prompt_embeds_mask": prompt_embeds_mask,
+        "negative_prompt_embeds_mask": negative_prompt_embeds_mask,
+    }
+    return ret
