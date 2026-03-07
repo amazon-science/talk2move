@@ -17,7 +17,9 @@
 
 ![teaser](./assets/teaser_talk2move.jpg)
 
-This repository contains training scripts for Talk2Move, scene-level image editing models using GRPO (Group Relative Policy Optimization).
+This repository contains training scripts for Talk2Move, scene-level image editing models using GRPO (Group Relative Policy Optimization). 
+
+In this work, we demonstrate that RLVR can effectively improve prompt-following performance for the corresponding tasks in vision-related settings, and we propose an early stopping strategy that greatly improves the sampling efficiency of flow-based GRPO.
 
 ## Licenses
 This codebase is build upon:
