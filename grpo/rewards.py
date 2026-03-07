@@ -429,44 +429,6 @@ def translation_score(device):
 
     return _fn
 
-def clipours_score(device):
-    from grpo.clipours_scorer import ClipOursScorer
-
-    scorer = ClipOursScorer(device=device)
-
-    def _fn(images, ref_images, prompts, metadata):
-        if isinstance(images, torch.Tensor):
-            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            images = images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            images = [Image.fromarray(image) for image in images]
-        if isinstance(ref_images, torch.Tensor):
-            ref_images = (ref_images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            ref_images = ref_images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            ref_images = [Image.fromarray(image).resize(images[0].size) for image in ref_images]
-        scores = scorer.run(images, ref_images, prompts, metadata)
-        return scores, {}
-
-    return _fn
-
-def qwenvl_score_request(device):
-    from grpo.qwenvl_instruct import QwenVLScorer
-
-    scorer = QwenVLScorer(device=device)
-
-    def _fn(images, ref_images, prompts, metadata):
-        if isinstance(images, torch.Tensor):
-            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            images = images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            images = [Image.fromarray(image) for image in images]
-        if isinstance(ref_images, torch.Tensor):
-            ref_images = (ref_images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            ref_images = ref_images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            ref_images = [Image.fromarray(image) for image in ref_images]
-        scores = scorer.run(images, ref_images, prompts, metadata)
-        return scores, {}
-    
-    return _fn
-
 def rotation_score(device):
     from grpo.qwenvl_instruct import QwenVLScorer
 
@@ -544,25 +506,6 @@ def lpips_score(device):
     return _fn
 
 
-def edit_score(device):
-    from grpo.edit_score import EditScorer
-    
-    scorer = EditScorer(device=device)
-
-    def _fn(images, ref_images, prompts, metadata):
-        if isinstance(images, torch.Tensor):
-            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            images = images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            images = [Image.fromarray(image) for image in images]
-        if isinstance(ref_images, torch.Tensor):
-            ref_images = (ref_images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            ref_images = ref_images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            ref_images = [Image.fromarray(image) for image in ref_images]
-        scores = scorer.run(images, ref_images, prompts, metadata)
-        return scores, {}
-    
-    return _fn
-
 def multi_score(device, score_dict):
     score_functions = {
         "deqa": deqa_score_remote,
@@ -578,10 +521,7 @@ def multi_score(device, score_dict):
         "clipscore": clip_score,
         "image_similarity": image_similarity_score,
         "translation": translation_score,
-        "ours_qwenvl": qwenvl_score_request,
-        "ours_clip": clipours_score,
         "rotation": rotation_score,
-        "editscore": edit_score,
         "position": position_score,
         "resize": resize_score,
         "lpips": lpips_score,
@@ -607,7 +547,7 @@ def multi_score(device, score_dict):
                     score_details[f'{key}_accuracy'] = value
             elif score_name == "image_similarity":
                 scores, rewards = score_fns[score_name](images, ref_images)
-            elif score_name in ['translation','ours_qwenvl','ours_clip','rotation','editscore','position', 'resize', 'lpips','unified']:
+            elif score_name in ['translation', 'rotation', 'position', 'resize', 'lpips', 'unified']:
                 scores, rewards = score_fns[score_name](images, ref_images, prompts, metadata)
             else:
                 scores, rewards = score_fns[score_name](images, prompts, metadata)
@@ -651,11 +591,9 @@ def main():
 
     score_dict = {
         # "translation": 1.0,
-        # "ours_clip":0.2,
         # "rotation":0.5,
         'lpips':0.1,
         'position':0.1
-        # "ours_qwenvl": 1.0
     }
     # Initialize the multi_score function with a device and score_dict
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

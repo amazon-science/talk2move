@@ -3,7 +3,6 @@
 [**Project page**](https://sparkstj.github.io/talk2move) | [**Paper**](https://arxiv.org/abs/2601.02356) | [**Video**](https://youtu.be/bVQ3vUxTAmM)
 
 
-
 [Jing Tan](https://sparkstj.github.io/), [Zhaoyang Zhang](https://zzyfd.github.io/#/), [Yantao Shen](https://yantaoshen.github.io/), [Jiarui Cai](https://scholar.google.com/citations?user=0na-wa0AAAAJ&hl=en), [Shuo Yang](http://shuoyang1213.me/), [Jiajun Wu](https://jiajunwu.com/), [Wei Xia](https://scholar.google.com/citations?user=OCdJxC8AAAAJ&hl=en), [Zhuowen Tu](https://pages.ucsd.edu/~ztu), [Stefano Soatto](https://web.cs.ucla.edu/~soatto/)
 
 
@@ -16,6 +15,7 @@
 </a>
 </p>
 
+![teaser](./assets/teaser_talk2move.jpg)
 
 This repository contains training scripts for Talk2Move, scene-level image editing models using GRPO (Group Relative Policy Optimization).
 
@@ -49,7 +49,7 @@ This codebase is build upon:
 Before running training, update the paths in your configuration:
 
 1. Replace `enter_path_here` placeholders in the codebase with your actual paths
-2. Update `MASTER_ADDR` in `scripts/multi_node/qwenimagedit/main2.sh` to match your master node IP
+2. Update `MASTER_ADDR` in `scripts/multi_node/qwenimagedit/main.sh` to match your master node IP
 3. Ensure all nodes can communicate via the specified master address and port
 
 The training script uses the following default settings:
@@ -59,7 +59,7 @@ The training script uses the following default settings:
 - **Master port**: 19001
 - **Config**: `config/grpo.py:talk2move`
 
-To modify these settings, edit `scripts/multi_node/qwenimagedit/main2.sh`.
+To modify these settings, edit `scripts/multi_node/qwenimagedit/main.sh`.
 
 ## Available Configurations
 
@@ -82,12 +82,12 @@ To run training on 16 GPUs across 2 nodes (8 GPUs per node):
 
 #### On Node 0 (Master):
 ```bash
-sh scripts/multi_node/qwenimagedit/main2.sh 0
+sh scripts/multi_node/qwenimagedit/main.sh 0
 ```
 
 #### On Node 1 (Worker):
 ```bash
-sh scripts/multi_node/qwenimagedit/main2.sh 1
+sh scripts/multi_node/qwenimagedit/main.sh 1
 ```
 
 ## Troubleshooting

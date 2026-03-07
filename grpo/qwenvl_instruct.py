@@ -46,33 +46,6 @@ def file_to_data_url_half(image, out_format="JPEG", quality=85) -> str:
     return f"data:{mime};base64,{b64}"
 
 
-
-# vlm_prompt = """
-# You are an image-editing evaluator.
-# You will be given:
-# 1. An original image.
-# 2. An editing instruction (prompt).
-# 3. An edited image.
-
-# Decide ONLY whether the edited image CORRECTLY follows the instruction.
-
-# Decision rule (must all be satisfied to be correct):
-# - The correct target object is present and correctly identified.
-# - It has been moved to the specified target location and removed from the original location.
-# - The placement looks natural (size, perspective, lighting, shadows reasonably consistent; minor imperfections allowed).
-# - The background at the original location is plausibly filled without glaring artifacts.
-# - No unintended major changes occurred elsewhere in the image.
-
-# Output Format:
-# Return ONLY strict JSON with a single boolean field and NOTHING else (no prose, no code fences):
-
-# {"correct": true}
-
-# Use true if and only if all conditions above are met; otherwise use false.
-# """
-
-
-
 class QwenVLScorer:
     def __init__(self, device):
         self.device = device

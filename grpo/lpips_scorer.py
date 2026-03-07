@@ -9,7 +9,6 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-# from grpo.clip_score import CLIPScore
 
 from lang_sam import LangSAM
 
@@ -23,20 +22,9 @@ class LPIPSScorer:
     def __init__(self, device):
         self.device = device
         self.seg_model = LangSAM()
-        # self.processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-tiny")
-        # self.model = AutoModelForZeroShotObjectDetection.from_pretrained("IDEA-Research/grounding-dino-tiny").to(self.device)
-        # self.clip_model = CLIPScore.from_pretrained("RE-N-Y/clipscore-vit-large-patch14")
-        # x, y: [B,3,H,W], can be in [0,1], we let LPIPS normalize itself
-        # mask: [B,1,H,W] takes {0,1}
+
         self.loss_fn = lpips.LPIPS(net='vgg')     # 'alex' is faster, 'vgg' is more stable
         self.loss_fn.eval()
-
-    # def parse_caption_txt(self, caption_path):
-    #     with open(caption_path, 'r', encoding='utf-8') as f:
-    #         batch_caption = f.read()
-    #     prompt = batch_caption.split('Move ')[-1].split(' to ')[0].split('forward')[0] + ' .'
-    #     instruction = batch_caption.split(',')[0].split(' to ')[-1]
-    #     return prompt, instruction, batch_caption
 
 
     @torch.no_grad()
@@ -62,28 +50,6 @@ class LPIPSScorer:
         )
         return [box.tolist() for box in results[0]["boxes"]] if results else []
 
-    # def relative_position(self, box_a, box_b):
-    #     boxes = np.array([box_a, box_b])[:, :4].reshape(2, 2, 2)
-    #     center_a, center_b = boxes.mean(axis=-2)
-    #     dim_a, dim_b = np.abs(np.diff(boxes, axis=-2))[..., 0, :]
-    #     offset = center_a - center_b
-    #     revised_offset = np.maximum(np.abs(offset) - self.POSITION_THRESHOLD * (dim_a + dim_b), 0) * np.sign(offset)
-    #     if np.all(np.abs(revised_offset) < 1e-3):
-    #         return 0
-    #     dx, dy = revised_offset / np.linalg.norm(offset)
-        
-    #     return (np.abs(dx) + np.abs(dy))*0.5
-
-    # def l1_distance(self, image0, image1):
-    #     image0 = image0.convert('RGB')
-    #     image1 = image1.convert('RGB')
-    #     image0 = image0.resize(image1.size)
-    #     image0 = np.array(image0)
-    #     image1 = np.array(image1)
-    #     l1_distance = np.sum(np.abs(image0 - image1))
-    #     num_pixels = image0.shape[0] * image0.shape[1] * image0.shape[2]
-    #     normalized_l1_distance = l1_distance / num_pixels / 255
-    #     return normalized_l1_distance        
         
     @torch.no_grad()
     def run(self, images, ref_images, prompts, metadatas):
