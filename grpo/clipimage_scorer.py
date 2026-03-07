@@ -6,9 +6,9 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-from flow_grpo.clip_score import CLIPScore
+from grpo.clip_score import CLIPScore
 
-class ManipulationScorer:
+class translationScorer:
     def __init__(self, device):
         self.device = device
         self.processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-tiny")

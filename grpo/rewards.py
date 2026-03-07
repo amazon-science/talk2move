@@ -30,7 +30,7 @@ def jpeg_compressibility():
     return _fn
 
 def aesthetic_score():
-    from flow_grpo.aesthetic_scorer import AestheticScorer
+    from grpo.aesthetic_scorer import AestheticScorer
 
     scorer = AestheticScorer(dtype=torch.float32).cuda()
 
@@ -46,7 +46,7 @@ def aesthetic_score():
     return _fn
 
 def clip_score():
-    from flow_grpo.clip_scorer import ClipScorer
+    from grpo.clip_scorer import ClipScorer
 
     scorer = ClipScorer(dtype=torch.float32).cuda()
 
@@ -60,7 +60,7 @@ def clip_score():
     return _fn
 
 def image_similarity_score(device):
-    from flow_grpo.clip_scorer import ClipScorer
+    from grpo.clip_scorer import ClipScorer
 
     scorer = ClipScorer(device=device).cuda()
 
@@ -81,7 +81,7 @@ def image_similarity_score(device):
 
 
 def pickscore_score(device):
-    from flow_grpo.pickscore_scorer import PickScoreScorer
+    from grpo.pickscore_scorer import PickScoreScorer
 
     scorer = PickScoreScorer(dtype=torch.float32, device=device)
 
@@ -96,7 +96,7 @@ def pickscore_score(device):
     return _fn
 
 def imagereward_score(device):
-    from flow_grpo.imagereward_scorer import ImageRewardScorer
+    from grpo.imagereward_scorer import ImageRewardScorer
 
     scorer = ImageRewardScorer(dtype=torch.float32, device=device)
 
@@ -112,7 +112,7 @@ def imagereward_score(device):
     return _fn
 
 def qwenvl_score(device):
-    from flow_grpo.qwenvl import QwenVLScorer
+    from grpo.qwenvl import QwenVLScorer
 
     scorer = QwenVLScorer(dtype=torch.bfloat16, device=device)
 
@@ -129,7 +129,7 @@ def qwenvl_score(device):
 
     
 def ocr_score(device):
-    from flow_grpo.ocr import OcrScorer
+    from grpo.ocr import OcrScorer
 
     scorer = OcrScorer()
 
@@ -144,7 +144,7 @@ def ocr_score(device):
     return _fn
 
 def video_ocr_score(device):
-    from flow_grpo.ocr import OcrScorer_video_or_image
+    from grpo.ocr import OcrScorer_video_or_image
 
     scorer = OcrScorer_video_or_image()
 
@@ -410,10 +410,10 @@ def unifiedreward_score_sglang(device):
     
     return _fn
 
-def manipulation_score(device):
-    from flow_grpo.manipulation_scorer import ManipulationScorer
+def translation_score(device):
+    from grpo.translation_scorer import translationScorer
 
-    scorer = ManipulationScorer(device=device)
+    scorer = translationScorer(device=device)
 
     def _fn(images, ref_images, prompts, metadata):
         if isinstance(images, torch.Tensor):
@@ -430,7 +430,7 @@ def manipulation_score(device):
     return _fn
 
 def clipours_score(device):
-    from flow_grpo.clipours_scorer import ClipOursScorer
+    from grpo.clipours_scorer import ClipOursScorer
 
     scorer = ClipOursScorer(device=device)
 
@@ -449,7 +449,7 @@ def clipours_score(device):
     return _fn
 
 def qwenvl_score_request(device):
-    from flow_grpo.qwenvl_instruct import QwenVLScorer
+    from grpo.qwenvl_instruct import QwenVLScorer
 
     scorer = QwenVLScorer(device=device)
 
@@ -468,7 +468,7 @@ def qwenvl_score_request(device):
     return _fn
 
 def rotation_score(device):
-    from flow_grpo.qwenvl_instruct import QwenVLScorer
+    from grpo.qwenvl_instruct import QwenVLScorer
 
     scorer = QwenVLScorer(device=device)
 
@@ -487,7 +487,7 @@ def rotation_score(device):
     return _fn
 
 def position_score(device):
-    from flow_grpo.position_scorer import PositionScorer
+    from grpo.position_scorer import PositionScorer
 
     scorer = PositionScorer(device=device)
 
@@ -506,7 +506,7 @@ def position_score(device):
     return _fn
 
 def resize_score(device):
-    from flow_grpo.resize_scorer import ResizeScorer
+    from grpo.resize_scorer import ResizeScorer
 
     scorer = ResizeScorer(device=device)
 
@@ -525,7 +525,7 @@ def resize_score(device):
     return _fn
 
 def lpips_score(device):
-    from flow_grpo.lpips_scorer import LPIPSScorer
+    from grpo.lpips_scorer import LPIPSScorer
 
     scorer = LPIPSScorer(device=device)
 
@@ -543,27 +543,9 @@ def lpips_score(device):
 
     return _fn
 
-def unified_score(device):
-    from flow_grpo.unified_scorer import UnifiedScorer
-
-    scorer = UnifiedScorer(device=device)
-
-    def _fn(images, ref_images, prompts, metadata):
-        if isinstance(images, torch.Tensor):
-            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            images = images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            images = [Image.fromarray(image) for image in images]
-        if isinstance(ref_images, torch.Tensor):
-            ref_images = (ref_images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            ref_images = ref_images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-            ref_images = [Image.fromarray(image).resize(images[0].size) for image in ref_images]
-        scores = scorer.run(images, ref_images, prompts, metadata)
-        return scores, {}
-
-    return _fn
 
 def edit_score(device):
-    from flow_grpo.edit_score import EditScorer
+    from grpo.edit_score import EditScorer
     
     scorer = EditScorer(device=device)
 
@@ -595,7 +577,7 @@ def multi_score(device, score_dict):
         "geneval": geneval_score,
         "clipscore": clip_score,
         "image_similarity": image_similarity_score,
-        "manipulation": manipulation_score,
+        "translation": translation_score,
         "ours_qwenvl": qwenvl_score_request,
         "ours_clip": clipours_score,
         "rotation": rotation_score,
@@ -603,13 +585,7 @@ def multi_score(device, score_dict):
         "position": position_score,
         "resize": resize_score,
         "lpips": lpips_score,
-        'unified': unified_score, 
     }
-    # for score_name, weight in score_dict.items():
-    #     func = score_functions.get(score_name)
-    #     print(func)
-    #     if func is None:
-    #         raise ValueError(f"No score function defined for score name: '{score_name}'")
 
     score_fns={}
     for score_name, weight in score_dict.items():
@@ -631,7 +607,7 @@ def multi_score(device, score_dict):
                     score_details[f'{key}_accuracy'] = value
             elif score_name == "image_similarity":
                 scores, rewards = score_fns[score_name](images, ref_images)
-            elif score_name in ['manipulation','ours_qwenvl','ours_clip','rotation','editscore','position', 'resize', 'lpips','unified']:
+            elif score_name in ['translation','ours_qwenvl','ours_clip','rotation','editscore','position', 'resize', 'lpips','unified']:
                 scores, rewards = score_fns[score_name](images, ref_images, prompts, metadata)
             else:
                 scores, rewards = score_fns[score_name](images, prompts, metadata)
@@ -672,16 +648,11 @@ def main():
     metadata = {"tag": "translation",\
      "prompt": "Rotate the hanging chair from facing slightly left to now facing toward the round ottoman rather than away from it.", "object": "hanging chair", "direction": 'null', "postedit_desp": "The hanging chair is now oriented to face the ottoman.", "image": "/path/to/data",\
       "rotation_direction": "clockwise", "rotation_axis": "psi", "rotation_angle": 40.0, "size": "", "ratio":1.5}
-       # metadata = {}  # Example metadata
-    # metadata['object'] = 'orange ball'
-    # metadata['direction'] = 'the right'
-    # metadata['target_position'] = 'on the wrist'
-    # metadata['postedit_desp'] = prompts
+
     score_dict = {
-        # "manipulation": 1.0,
+        # "translation": 1.0,
         # "ours_clip":0.2,
         # "rotation":0.5,
-        "unified":0.8,
         'lpips':0.1,
         'position':0.1
         # "ours_qwenvl": 1.0

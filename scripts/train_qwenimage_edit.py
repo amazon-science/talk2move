@@ -24,15 +24,14 @@ from diffusers.utils.torch_utils import is_compiled_module, randn_tensor
 from diffusers.pipelines.qwenimage.pipeline_qwenimage_edit import calculate_shift, calculate_dimensions  
 
 
-from flow_grpo.fsdp_utils import FSDPConfig, fsdp_wrapper, init_distributed, save_fsdp_checkpoint, save_lora_checkpoint, OptimizerOffload
+from grpo.fsdp_utils import FSDPConfig, fsdp_wrapper, init_distributed, save_fsdp_checkpoint, save_lora_checkpoint, OptimizerOffload
 import numpy as np
-import flow_grpo.prompts
-import flow_grpo.rewards
-from flow_grpo.stat_tracking import PerPromptStatTracker
-# from flow_grpo.diffusers_patch.qwenimage_pipeline_with_logprob import pipeline_with_logprob
-from flow_grpo.diffusers_patch.qwenimage_edit_pipeline_with_logprob import pipeline_with_logprob
+import grpo.prompts
+import grpo.rewards
+from grpo.stat_tracking import PerPromptStatTracker
+from grpo.diffusers_patch.qwenimage_edit_pipeline_with_logprob import pipeline_with_logprob
 
-from flow_grpo.diffusers_patch.sd3_sde_with_logprob import sde_step_with_logprob
+from grpo.diffusers_patch.sd3_sde_with_logprob import sde_step_with_logprob
 import torch
 import wandb
 from functools import partial
@@ -44,7 +43,7 @@ from diffusers.utils import convert_unet_state_dict_to_peft
 
 import random
 from torch.utils.data import Dataset, DataLoader, Sampler
-from flow_grpo.ema import EMAModuleWrapper
+from grpo.ema import EMAModuleWrapper
 
 tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
 
@@ -110,7 +109,7 @@ def set_seed(seed, device_specific=True):
         # For device-specific seeding
         torch.cuda.manual_seed_all(seed + dist.get_rank() if dist.is_initialized() else seed)
 
-class ManipulationPromptImageDataset(Dataset):
+class translationPromptImageDataset(Dataset):
     def __init__(self, dataset, split='train'):
         self.dataset = dataset
         self.file_path = os.path.join(dataset, f'{split}_metadata.jsonl')
@@ -288,27 +287,6 @@ def compute_log_prob(transformer, pipeline, sample, j, config, rank):
     noise_pred = noise_pred[:, : sample["latents"][:, j].size(1)]
     noise_pred, neg_noise_pred = noise_pred.chunk(2, dim=0)
 
-    # noise_pred = transformer(
-    #     hidden_states=latent_model_input,
-    #     timestep=sample["timesteps"][:, j] / 1000,
-    #     guidance=None,
-    #     encoder_hidden_states_mask=sample["prompt_embeds_mask"],
-    #     encoder_hidden_states=sample["prompt_embeds"],
-    #     img_shapes=img_shapes,
-    #     txt_seq_lens=txt_seq_lens,
-    # )[0]
-    # noise_pred = noise_pred[:, : sample["latents"][:, j].size(1)]
-
-    # neg_noise_pred = transformer(
-    #     hidden_states=latent_model_input,
-    #     timestep=sample["timesteps"][:, j] / 1000,
-    #     guidance=None,
-    #     encoder_hidden_states_mask=sample["negative_prompt_embeds_mask"],
-    #     encoder_hidden_states=sample["negative_prompt_embeds"],
-    #     img_shapes=img_shapes,
-    #     txt_seq_lens=negative_txt_seq_lens,
-    # )[0]
-    # neg_noise_pred = neg_noise_pred[:, : sample["latents"][:, j].size(1)]
 
     comb_pred = neg_noise_pred + config.sample.guidance_scale * (noise_pred - neg_noise_pred)
 
@@ -326,145 +304,6 @@ def compute_log_prob(transformer, pipeline, sample, j, config, rank):
     )
 
     return prev_sample, log_prob, prev_sample_mean, std_dev_t
-
-
-# def eval(pipeline, test_dataloader, config, rank, local_rank, world_size, device, global_step, reward_fn, executor, autocast, ema, transformer_trainable_parameters):
-#     if config.train.ema:
-#         ema.copy_ema_to(transformer_trainable_parameters, store_temp=True)
-
-#     all_rewards = defaultdict(list)
-#     if rank == 0:
-#         print('***********eval\n')
-#         with torch.no_grad():
-#             with FSDP.summon_full_params(pipeline.transformer):
-#                 for test_batch in tqdm(
-#                         test_dataloader,
-#                         desc="Eval: ",
-#                         # disable=local_rank != 0,
-#                         position=0,
-#                     ):
-#                     prompts, prompt_metadata, ref_images, _ = test_batch
-#                     with autocast():
-#                         print(pipeline.dtype,'\n')
-#                         pipeline.to(torch.bfloat16)
-#                         pipeline.text_encoder.to(torch.bfloat16)
-#                         pipeline.transformer.to(torch.bfloat16)
-#                         inputs = {
-#                             "image": ref_images,
-#                             "prompt": prompts,
-#                             "generator": torch.manual_seed(0),
-#                             "true_cfg_scale": config.sample.guidance_scale,
-#                             "negative_prompt": [" "]*len(prompts),
-#                             "num_inference_steps": config.sample.eval_num_steps,
-#                             "width":config.resolution,
-#                             "height":config.resolution
-#                         }
-#                         output = pipeline(**inputs)
-#         images = output.images
-#         images2 = images
-#         images = [torch.tensor(np.asarray(image)/255) for image in images]
-#         images = torch.stack(images, dim=0)
-#         # print(images.shape)
-#         images = images.permute(0,3,1,2)
-#         save_dir = os.path.join(config.save_dir, f"samples-eval-{global_step}")
-#         os.makedirs(save_dir, exist_ok=True)
-#         for idx, img in enumerate(images2):
-#             name = prompt_metadata[idx]['image'].split('/')[-1]
-#             img.save(f'{save_dir}/{name}')
-#         rewards = executor.submit(reward_fn, images, prompts, prompt_metadata, ref_images=ref_images, only_strict=False)
-#         # yield to to make sure reward computation starts
-#         time.sleep(0)
-        
-#         try:
-#             rewards, reward_metadata = rewards.result()
-#             print(f"Rank {rank}: Reward computation completed, keys: {list(rewards.keys())}")
-#         except Exception as e:
-#             print(f"Rank {rank}: Reward computation failed: {e}")
-#             # Create dummy rewards to keep processes synchronized
-#             rewards = {"dummy": torch.zeros(len(prompts), device=device)}
-#             reward_metadata = {}
-
-#         # Ensure all processes have completed reward computation before gathering
-#         # if dist.is_initialized():
-#         #     dist.barrier()
-#         #     print(f"Rank {rank}: All processes completed reward computation")
-
-#         # Standardize reward tensor shapes across all processes
-#         for key, value in rewards.items():
-#             # Convert to tensor and ensure consistent shape
-#             tensor_value = torch.as_tensor(value, device=device, dtype=torch.bfloat16).contiguous()
-            
-#             # Ensure all processes have the same batch size by padding if necessary
-#             expected_batch_size = len(prompts)
-#             if tensor_value.shape[0] != expected_batch_size:
-#                 print(f"Rank {rank}: Warning - tensor shape mismatch for key '{key}': got {tensor_value.shape[0]}, expected {expected_batch_size}")
-#                 # Pad or truncate to match expected batch size
-#                 if tensor_value.shape[0] < expected_batch_size:
-#                     padding = torch.zeros(expected_batch_size - tensor_value.shape[0], device=device)
-#                     tensor_value = torch.cat([tensor_value, padding])
-#                 else:
-#                     tensor_value = tensor_value[:expected_batch_size]
-            
-#             print(f"Rank {rank}: Processing reward key '{key}' with shape {tensor_value.shape}")
-            
-#             try:
-#                 rewards_gather = gather_tensor(tensor_value.to(torch.bfloat16), world_size).cpu().float().numpy()
-#                 all_rewards[key].append(rewards_gather)
-#             except Exception as e:
-#                 print(f"Rank {rank}: Failed to gather tensor for key '{key}': {e}")
-#                 # Skip this reward if gathering fails
-#                 continue
-    
-#         last_batch_images_gather = gather_tensor(torch.as_tensor(images, device=device), world_size).cpu().float().numpy()
-#         last_batch_prompt_ids = pipeline.tokenizer(
-#             prompts,
-#             padding="max_length",
-#             max_length=256,
-#             truncation=True,
-#             return_tensors="pt",
-#         ).input_ids.to(device)
-#         last_batch_prompt_ids_gather = gather_tensor(last_batch_prompt_ids, world_size).cpu().float().numpy()
-#         last_batch_prompts_gather = pipeline.tokenizer.batch_decode(
-#             last_batch_prompt_ids_gather, skip_special_tokens=True
-#         )
-#         last_batch_rewards_gather = {}
-#         for key, value in rewards.items():
-#             last_batch_rewards_gather[key] = gather_tensor(torch.as_tensor(value, device=device).contiguous(), world_size).cpu().float().numpy()
-
-#         all_rewards = {key: np.concatenate(value) for key, value in all_rewards.items()}
-#     if rank == 0:
-#         os.makedirs('wandb_submit_eval', exist_ok=True)
-#         with tempfile.TemporaryDirectory() as tmpdir:
-#             num_samples = min(4, len(last_batch_images_gather))
-#             sample_indices = range(num_samples)
-#             print('Eval sample indices', sample_indices)
-#             for idx, index in enumerate(sample_indices):
-#                 image = last_batch_images_gather[index]
-#                 pil = Image.fromarray(
-#                     (image.transpose(1, 2, 0) * 255).astype(np.uint8)
-#                 )
-#                 pil = pil.resize((config.resolution, config.resolution))
-#                 pil.save(os.path.join(tmpdir, f"{idx}.jpg"))
-#                 pil.save(os.path.join('wandb_submit_eval', f"{idx}.jpg"))
-#             sampled_prompts = [last_batch_prompts_gather[index] for index in sample_indices]
-#             sampled_rewards = [{k: last_batch_rewards_gather[k][index] for k in last_batch_rewards_gather} for index in sample_indices]
-#             # for key, value in all_rewards.items():
-#             #     print(key, value.shape)
-#             wandb.log(
-#                 {
-#                     "eval_images": [
-#                         wandb.Image(
-#                             os.path.join(tmpdir, f"{idx}.jpg"),
-#                             caption=f"{prompt:.1000} | " + " | ".join(f"{k}: {v:.2f}" for k, v in reward.items() if v != -10),
-#                         )
-#                         for idx, (prompt, reward) in enumerate(zip(sampled_prompts, sampled_rewards))
-#                     ],
-#                     **{f"eval_reward_{key}": np.mean(value[value != -10]) for key, value in all_rewards.items()},
-#                 },
-#                 step=global_step,
-#             )
-#     if config.train.ema:
-#         ema.copy_temp_to(transformer_trainable_parameters)
 
 def eval(pipeline, test_dataloader, config, rank, local_rank, world_size, device, global_step, reward_fn, executor, autocast, ema, transformer_trainable_parameters):
     if config.train.ema:
@@ -500,19 +339,6 @@ def eval(pipeline, test_dataloader, config, rank, local_rank, world_size, device
 
         with autocast():
             with torch.no_grad():
-                # inputs = {
-                #     "image": ref_images,
-                #     "prompt": prompts,
-                #     "generator": torch.manual_seed(0),
-                #     "true_cfg_scale": config.sample.guidance_scale,
-                #     "negative_prompt": [" "]*len(prompts),
-                #     "num_inference_steps": config.sample.eval_num_steps,
-                #     "width":config.resolution,
-                #     "height":config.resolution
-                # }
-
-                # output = pipeline(**inputs)
-                # output_image = output.images[0]
                 
                 collected_data = pipeline_with_logprob(
                         pipeline,
@@ -530,16 +356,8 @@ def eval(pipeline, test_dataloader, config, rank, local_rank, world_size, device
                 )
 
         images = collected_data["images"]
-        # images2 = torch.stack(images)
-        # images2 = (images2 * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-        # images2 = images2.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-        # images2 = [Image.fromarray(image) for image in images2]
 
-        # images = output.images
         images2 = images
-        # images = [torch.tensor(np.asarray(image)/255) for image in images]
-        # images = torch.stack(images, dim=0)
-        # images = images.permute(0,3,1,2)
         save_dir = os.path.join(config.save_dir, f"samples-eval-{global_step}")
         os.makedirs(save_dir, exist_ok=True)
         for idx, img in enumerate(images2):
@@ -675,7 +493,7 @@ def main(_):
     os.makedirs(project_dir, exist_ok=True)
     if rank == 0:
         wandb.init(
-            project="flow_grpo",
+            project="grpo",
             # mode="disabled"
         )
     logger.info(f"\n{config}")
@@ -749,12 +567,7 @@ def main(_):
             transformer_state_dict = {
                 f"{k.replace('transformer.', '')}": v for k, v in lora_state_dict.items() if k.startswith("transformer.")
             }
-            # print(transformer_state_dict.keys)
-            # print('--------')
-            # for key in pipeline.transformer.keys():
-            #     if 'lora' in key:
-            #         print(key)
-            # print(pipeline.transformer.keys()[:10])
+
             transformer_state_dict = convert_unet_state_dict_to_peft(transformer_state_dict)
             incompatible_keys = set_peft_model_state_dict(pipeline.transformer, transformer_state_dict, low_cpu_mem_usage=True)
             if incompatible_keys is not None:
@@ -765,14 +578,7 @@ def main(_):
                         f"Loading adapter weights from state_dict led to unexpected keys not found in the model: "
                         f" {unexpected_keys}. "
                     )
-            # print('Total number: ',len(unexpected_keys))
-        
-        # if config.train.lora_path:
-        #     pipeline.transformer = PeftModel.from_pretrained(pipeline.transformer, config.train.lora_path)
-        #     # After loading with PeftModel.from_pretrained, all parameters have requires_grad set to False. You need to call set_adapter to enable gradients for the adapter parameters.
-        #     pipeline.transformer.set_adapter("default")
-        # else:
-        # pipeline.transformer = get_peft_model(pipeline.transformer, transformer_lora_config)
+
     
     transformer = pipeline.transformer
 
@@ -840,8 +646,8 @@ def main(_):
     if config.fsdp_optimizer_offload:
         optimizer = OptimizerOffload(optimizer)
     
-    train_dataset = ManipulationPromptImageDataset(config.dataset, 'train')
-    test_dataset = ManipulationPromptImageDataset(config.dataset, 'test')
+    train_dataset = translationPromptImageDataset(config.dataset, 'train')
+    test_dataset = translationPromptImageDataset(config.dataset, 'test')
     train_sampler = DistributedKRepeatSampler( 
         dataset=train_dataset,
         batch_size=config.sample.train_batch_size,
@@ -855,14 +661,14 @@ def main(_):
         train_dataset,
         batch_sampler=train_sampler,
         num_workers=1,
-        collate_fn=ManipulationPromptImageDataset.collate_fn,
+        collate_fn=translationPromptImageDataset.collate_fn,
         # persistent_workers=True
     )
     test_dataloader = DataLoader(
         test_dataset,
         sampler=DistributedSampler(test_dataset, shuffle=False),
         batch_size=config.sample.test_batch_size,
-        collate_fn=ManipulationPromptImageDataset.collate_fn,
+        collate_fn=translationPromptImageDataset.collate_fn,
         num_workers=8,
     )
 
@@ -883,8 +689,8 @@ def main(_):
 
     # FSDP doesn't need deepspeed configuration
     # prepare prompt and reward fn
-    reward_fn = getattr(flow_grpo.rewards, 'multi_score')(device, config.reward_fn)
-    eval_reward_fn = getattr(flow_grpo.rewards, 'multi_score')(device, config.reward_fn)
+    reward_fn = getattr(grpo.rewards, 'multi_score')(device, config.reward_fn)
+    eval_reward_fn = getattr(grpo.rewards, 'multi_score')(device, config.reward_fn)
     
     # FSDP setup completed above
     # executor to perform callbacks asynchronously. this is beneficial for the llava callbacks which makes a request to a
@@ -946,8 +752,6 @@ def main(_):
             num_channels_latents = pipeline.transformer.config.in_channels // 4
             shape = (1, 1, num_channels_latents, latent_height, latent_width)
             batchsize = config.sample.train_batch_size
-            # rand_noise = torch.load('/path/to/data')
-            # rand_noise = rand_noise.to(device=pipeline.device, dtype=pipeline.dtype)
             rand_noise = randn_tensor(shape, generator=generator, device=pipeline.device, dtype=pipeline.dtype)
             rand_noise = torch.cat([rand_noise]*batchsize, dim=0)
             rand_noise = pipeline._pack_latents(rand_noise, batchsize, num_channels_latents, latent_height, latent_width)

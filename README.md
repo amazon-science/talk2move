@@ -1,6 +1,23 @@
-# Talk2Move Training Code
+# Talk2Move: Reinforcement Learning for Text-Instructed Object-Level Geometric Transformation in Scenes
 
-This repository contains training scripts for scene-level image editing models using GRPO (Group Relative Policy Optimization).
+[**Project page**](https://sparkstj.github.io/talk2move) | [**Paper**](https://arxiv.org/abs/2601.02356) | [**Video**](https://youtu.be/bVQ3vUxTAmM)
+
+
+
+[Jing Tan](https://sparkstj.github.io/), [Zhaoyang Zhang](https://zzyfd.github.io/#/), [Yantao Shen](https://yantaoshen.github.io/), [Jiarui Cai](https://scholar.google.com/citations?user=0na-wa0AAAAJ&hl=en), [Shuo Yang](http://shuoyang1213.me/), [Jiajun Wu](https://jiajunwu.com/), [Wei Xia](https://scholar.google.com/citations?user=OCdJxC8AAAAJ&hl=en), [Zhuowen Tu](https://pages.ucsd.edu/~ztu), [Stefano Soatto](https://web.cs.ucla.edu/~soatto/)
+
+
+<p align="center">
+<a href="https://arxiv.org/abs/2601.02356"><img src="https://img.shields.io/badge/arXiv-Paper-<color>"></a>
+<a href="https://sparkstj.github.io/talk2move"><img src="https://img.shields.io/badge/Project-Website-red"></a>
+<a href="https://youtu.be/bVQ3vUxTAmM"><img src="https://img.shields.io/static/v1?label=Demo&message=Video&color=orange"></a>
+<a href="" target='_blank'>
+<img src="https://visitor-badge.laobi.icu/badge?page_id=sparkstj.talk2move" />
+</a>
+</p>
+
+
+This repository contains training scripts for Talk2Move, scene-level image editing models using GRPO (Group Relative Policy Optimization).
 
 ## Licenses
 This codebase is build upon:
@@ -9,36 +26,25 @@ This codebase is build upon:
 - lang-segment-anything that is licensed underApache-2.0 license; 
 - Grounding-DINO that is licensed under Apache-2.0 license
 
-## Key Components
+## Key Modifications
+### **Added an object-manipulation reward suite for editing tasks**  
+   **Modified file:** `talk2move/rewards.py`  
+   - Added new editing-focused rewards: `translation`, `ours_qwenvl` (zero-shot qwenvl scorer), `ours_clip`, `rotation`, `resize`, `lpips`
+   - Extended `multi_score` to support editing-task inputs via a new 4-argument path: `images`, `ref_images`, `prompts`, `metadata`.
 
-### Configuration Files (`config/`)
-- **grpo.py**: Main configuration file containing all GRPO training setups for different models and tasks
-- **base.py**: Base configuration with default hyperparameters
-- **dpo.py**: Direct Preference Optimization configurations
-- **sft.py**: Supervised fine-tuning configurations
+### **Upgraded the GRPO sampling pipeline from pure SDE to SDE + shortcut ODE**  
+   **Modified files:** `grpo/diffusers_patch/qwenimage_edit_pipeline_with_logprob.py`, `grpo/diffusers_patch/sd3_sde_with_logprob.py`  
+   - Introduced `ode_shortcut_step` in `qwenimage_edit_pipeline_with_logprob.py`, extending sampling from pure SDE to `SDE + shortcut ODE`.  
+   - Added `ode_shortcut_step` in `sd3_sde_with_logprob.py`, which updates latents using continuous-time steps (`t -> t_prev`) and `dt` (instead of the scheduler’s discrete `step+1`), and performs deterministic ODE updates without injecting random noise.
 
-### Reward Functions (`flow_grpo/`)
-The reward system supports multiple scoring methods:
-- **Text-Image Alignment**: CLIP score, PickScore, ImageReward
-- **Image Quality**: Aesthetic score, JPEG compressibility
-- **Task-Specific**: OCR accuracy, GenEval, object manipulation
-- **Edit Quality**: Position accuracy, rotation accuracy, resize accuracy, LPIPS similarity
-- **Multi-Modal**: Qwen-VL based verification
-
-### Training Scripts (`scripts/`)
-- **Single-node training**: Use `train_*.py` directly with accelerate
-- **Multi-node training**: Use scripts in `scripts/multi_node/` for distributed training
-- **Demo scripts**: Quick inference examples in `scripts/demo/`
-- **Test scripts**: Evaluation and testing utilities in `scripts/test/`
-
-## Prerequisites
-
+## Setup
+### Prerequisites
 - Python 3.8+
 - PyTorch with CUDA support
 - 16 GPUs (2 nodes × 8 GPUs per node)
 - Required Python packages (install via `pip install -e .`)
 
-## Configuration
+### Configuration
 
 Before running training, update the paths in your configuration:
 
@@ -46,39 +52,21 @@ Before running training, update the paths in your configuration:
 2. Update `MASTER_ADDR` in `scripts/multi_node/qwenimagedit/main2.sh` to match your master node IP
 3. Ensure all nodes can communicate via the specified master address and port
 
-## Running Training (16 GPUs)
-
-To run training on 16 GPUs across 2 nodes (8 GPUs per node):
-
-### On Node 0 (Master):
-```bash
-sh scripts/multi_node/qwenimagedit/main2.sh 0
-```
-
-### On Node 1 (Worker):
-```bash
-sh scripts/multi_node/qwenimagedit/main2.sh 1
-```
-
-## Training Configuration
-
 The training script uses the following default settings:
 - **GPUs per node**: 8
 - **Number of nodes**: 2
 - **Total GPUs**: 16
 - **Master port**: 19001
-- **Config**: `config/grpo.py:counting_qwenimage_edit_mini`
+- **Config**: `config/grpo.py:talk2move`
 
 To modify these settings, edit `scripts/multi_node/qwenimagedit/main2.sh`.
 
 ## Available Configurations
 
-Check `config/grpo.py` for available training configurations:
+Check `config_files/grpo.py` for available training configurations:
 
 ### Qwen-Image-Edit Configurations
-- `counting_qwenimage_edit_mini` - Mini configuration for testing
-- `counting_qwenimage_edit_8gpu_2` - 8 GPU setup
-- Various task-specific configs for rotation, resize, translation, manipulation
+- Various task-specific configs for rotation(`talk2move_rotation`), resize (`talk2move_resize`), translation (`talk2move_translation`)
 
 Each configuration specifies:
 - Model architecture and checkpoint paths
@@ -87,31 +75,20 @@ Each configuration specifies:
 - Reward function weights
 - Training hyperparameters (learning rate, beta, etc.)
 
-## Monitoring Training
 
-Training logs and checkpoints will be saved according to the `save_dir` specified in your configuration (typically in `logs/` directory).
+### Running Training (16 GPUs)
 
-## Customization
+To run training on 16 GPUs across 2 nodes (8 GPUs per node):
 
-### Adding New Reward Functions
-1. Create a new scorer in `flow_grpo/` (e.g., `my_scorer.py`)
-2. Implement the scorer class with a `run()` or `__call__()` method
-3. Add the reward function to `flow_grpo/rewards.py` in the `score_functions` dict
-4. Configure the reward weight in your config file
+#### On Node 0 (Master):
+```bash
+sh scripts/multi_node/qwenimagedit/main2.sh 0
+```
 
-### Creating New Configurations
-1. Open `config/grpo.py`
-2. Define a new function (e.g., `def my_custom_config()`)
-3. Start from an existing config: `config = pickscore_sd3()` or `config = compressibility()`
-4. Modify parameters as needed
-5. Use it with: `--config config/grpo.py:my_custom_config`
-
-### Multi-Node Setup
-For different node counts, modify the shell scripts:
-- `GPUS_PER_NODE`: GPUs available per node (typically 8)
-- `NUM_MACHINES`: Total number of nodes
-- `MASTER_ADDR`: IP address of the master node (rank 0)
-- `MASTER_PORT`: Communication port (default 19001)
+#### On Node 1 (Worker):
+```bash
+sh scripts/multi_node/qwenimagedit/main2.sh 1
+```
 
 ## Troubleshooting
 

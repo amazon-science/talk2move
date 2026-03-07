@@ -35,7 +35,7 @@ def general_ocr_wan2_1():
     config.sample.num_steps = 20
     config.sample.eval_num_steps = 50
     config.sample.guidance_scale=4.5
-    config.run_name = "wan_flow_grpo"
+    config.run_name = "wan_grpo"
     
     config.height = 240
     config.width = 416
@@ -605,146 +605,7 @@ def pickscore_qwenimage_8gpu():
     config.per_prompt_stat_tracking = True
     return config
 
-def counting_qwenimage_edit_8gpu_2():
-    gpu_number=8
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/manipulation_edit")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 50
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(16/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.5
-    config.sample.sde_window_size = 4
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 10
-    config.save_dir = 'logs/manipulation/qwenimageedit_v2.3'
-    config.reward_fn = {
-        "manipulation": 1.0,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_8gpu():
-    gpu_number=8
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/manipulation_edit")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 25
-    config.sample.eval_num_steps = 50
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(16/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.learning_rate = 1e-4
-    config.train.clip_range = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = False
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = 4
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 10
-    config.save_dir = 'logs/manipulation/qwenimageedit_v3.4'
-    config.reward_fn = {
-        "manipulation": 1.0,
-        # "ours_clip": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_rotation():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/rotation")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = 4
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 2
-    config.save_dir = 'logs/rotation/shortcut_v7_position'
-    config.reward_fn = {
-        # "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        "rotation":0.9,
-        "position":0.1,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_resize():
+def talk2move_resize():
     gpu_number=16
     config = compressibility()
     config.dataset = os.path.join(os.getcwd(), "dataset/resize")
@@ -783,19 +644,15 @@ def counting_qwenimage_edit_resize():
     config.fsdp_optimizer_offload = True
     config.save_freq = 10 # epoch
     config.eval_freq = 10
-    config.save_dir = 'logs/resize/shortcut_v5'
+    config.save_dir = 'logs/resize/default'
     config.reward_fn = {
-        # "manipulation": 1.0,
-        # "ours_clip": 0.2,
         "resize":0.9,
-        # "position":0.1,
         "lpips":0.1
-        # "image_similarity": 0.2,
     }
     config.per_prompt_stat_tracking = True
     return config
 
-def counting_qwenimage_edit_rotation_full():
+def talk2move_rotation():
     gpu_number=16
     config = compressibility()
     config.dataset = os.path.join(os.getcwd(), "dataset/rotation")
@@ -834,118 +691,15 @@ def counting_qwenimage_edit_rotation_full():
     config.fsdp_optimizer_offload = True
     config.save_freq = 10 # epoch
     config.eval_freq = 2
-    config.save_dir = 'logs/rotation/shortcut_v7_position_full'
+    config.save_dir = 'logs/rotation/default'
     config.reward_fn = {
-        # "manipulation": 1.0,
-        # "ours_clip": 0.2,
         "rotation":0.9,
         "position":0.1,
-        # "image_similarity": 0.2,
     }
     config.per_prompt_stat_tracking = True
     return config
 
-def counting_qwenimage_edit_rotation_unified_full():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/rotation")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = -1
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 2
-    config.save_dir = 'logs/rotation/unified_v1'
-    config.reward_fn = {
-        # "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        "rotation":0.9,
-        "position":0.1,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_rotation_win23():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/rotation")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = 4
-    config.sample.sde_window_range = (2, 6)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 2
-    config.save_dir = 'logs/rotation/shortcut_v8_win23'
-    config.reward_fn = {
-        # "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        "rotation":0.9,
-        "position":0.1,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit():
+def talk2move_translation():
     gpu_number=16
     config = compressibility()
     config.dataset = os.path.join(os.getcwd(), "dataset/rotation")
@@ -984,261 +738,9 @@ def counting_qwenimage_edit():
     config.fsdp_optimizer_offload = True
     config.save_freq = 10 # epoch
     config.eval_freq = 10
-    config.save_dir = 'logs/rotation/shortcut'
+    config.save_dir = 'logs/rotation/default'
     config.reward_fn = {
-        "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        # "rotation":1.0,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_mini():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/translationmini")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = 4
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 10
-    config.save_dir = 'logs/translation/mini'
-    config.reward_fn = {
-        "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        # "rotation":1.0,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_translation_unified():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/translation")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = 4
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 10
-    config.save_dir = 'logs/translation/unified_v1'
-    config.reward_fn = {
-        "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        # "rotation":1.0,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_full():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/translation")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = -1
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 10
-    config.save_dir = 'logs/translation/full'
-    config.reward_fn = {
-        "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        # "rotation":1.0,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_united():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/united")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = -1
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 2
-    config.save_dir = 'logs/unified/full_v1'
-    config.reward_fn = {
-        # "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        "unified":0.7,
-        "lpips":0.2,
-        "position":0.1,
-        # "image_similarity": 0.2,
-    }
-    config.per_prompt_stat_tracking = True
-    return config
-
-def counting_qwenimage_edit_resize_unified():
-    gpu_number=16
-    config = compressibility()
-    config.dataset = os.path.join(os.getcwd(), "dataset/resize")
-
-    # sd3.5 medium
-    config.pretrained.model = "Qwen/Qwen-Image-Edit"
-    config.sample.num_steps = 10
-    config.sample.eval_num_steps = 10
-    config.sample.guidance_scale = 4
-
-    config.resolution = 512
-    config.sample.train_batch_size = 4
-    config.sample.num_image_per_prompt = 16
-    config.sample.num_batches_per_epoch = int(32/(gpu_number*config.sample.train_batch_size/config.sample.num_image_per_prompt))
-    assert config.sample.num_batches_per_epoch % 2 == 0, "Please set config.sample.num_batches_per_epoch to an even number! This ensures that config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch / 2, so that gradients are updated twice per epoch."
-    config.sample.test_batch_size = 4 # This bs is a special design, the test set has a total of 2048, to make gpu_num*bs*n as close as possible to 2048, because when the number of samples cannot be divided evenly by the number of cards, multi-card will fill the last batch to ensure each card has the same number of samples, affecting gradient synchronization.
-    
-    config.train.clip_range = 2e-4
-    config.train.learning_rate = 2e-4
-
-    config.train.batch_size = config.sample.train_batch_size
-    config.train.gradient_accumulation_steps = config.sample.num_batches_per_epoch//2
-    config.train.num_inner_epochs = 1
-    config.train.timestep_fraction = 0.99
-    config.train.beta = 0
-    config.sample.global_std = True
-    config.sample.same_latent = True
-    config.train.ema = False
-    config.sample.noise_level = 1.0
-    config.sample.sde_window_size = 4
-    config.sample.sde_window_range = (0, config.sample.num_steps//2)
-    config.mixed_precision = "bf16"
-    config.use_lora = True
-    config.train.lora_path = '/path/to/data'
-    config.activation_checkpointing = True
-    config.fsdp_optimizer_offload = True
-    config.save_freq = 10 # epoch
-    config.eval_freq = 10
-    config.save_dir = 'logs/resize/unified'
-    config.reward_fn = {
-        # "manipulation": 1.0,
-        # "ours_clip": 0.2,
-        "resize":0.9,
-        # "position":0.1,
-        "lpips":0.1
-        # "image_similarity": 0.2,
+        "translation": 1.0,
     }
     config.per_prompt_stat_tracking = True
     return config

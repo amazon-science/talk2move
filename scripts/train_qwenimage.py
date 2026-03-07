@@ -18,13 +18,13 @@ logger = logging.getLogger(__name__)
 from diffusers import DiffusionPipeline, QwenImageTransformer2DModel
 from diffusers.utils.torch_utils import is_compiled_module
 
-from flow_grpo.fsdp_utils import FSDPConfig, fsdp_wrapper, init_distributed, save_fsdp_checkpoint, OptimizerOffload
+from grpo.fsdp_utils import FSDPConfig, fsdp_wrapper, init_distributed, save_fsdp_checkpoint, OptimizerOffload
 import numpy as np
-import flow_grpo.prompts
-import flow_grpo.rewards
-from flow_grpo.stat_tracking import PerPromptStatTracker
-from flow_grpo.diffusers_patch.qwenimage_pipeline_with_logprob import pipeline_with_logprob
-from flow_grpo.diffusers_patch.sd3_sde_with_logprob import sde_step_with_logprob
+import grpo.prompts
+import grpo.rewards
+from grpo.stat_tracking import PerPromptStatTracker
+from grpo.diffusers_patch.qwenimage_pipeline_with_logprob import pipeline_with_logprob
+from grpo.diffusers_patch.sd3_sde_with_logprob import sde_step_with_logprob
 import torch
 import wandb
 from functools import partial
@@ -34,7 +34,7 @@ from PIL import Image
 from peft import LoraConfig, get_peft_model, set_peft_model_state_dict, PeftModel
 import random
 from torch.utils.data import Dataset, DataLoader, Sampler
-from flow_grpo.ema import EMAModuleWrapper
+from grpo.ema import EMAModuleWrapper
 
 tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
 
@@ -365,7 +365,7 @@ def main(_):
     os.makedirs(project_dir, exist_ok=True)
     if rank == 0:
         wandb.init(
-            project="flow_grpo",
+            project="grpo",
             # mode="disabled"
         )
     logger.info(f"\n{config}")
@@ -580,8 +580,8 @@ def main(_):
 
     # FSDP doesn't need deepspeed configuration
     # prepare prompt and reward fn
-    reward_fn = getattr(flow_grpo.rewards, 'multi_score')(device, config.reward_fn)
-    eval_reward_fn = getattr(flow_grpo.rewards, 'multi_score')(device, config.reward_fn)
+    reward_fn = getattr(grpo.rewards, 'multi_score')(device, config.reward_fn)
+    eval_reward_fn = getattr(grpo.rewards, 'multi_score')(device, config.reward_fn)
     
     # FSDP setup completed above
     # executor to perform callbacks asynchronously. this is beneficial for the llava callbacks which makes a request to a

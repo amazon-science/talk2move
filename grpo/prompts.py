@@ -6,19 +6,19 @@ import random
 
 # IE = inflect.engine()
 IE=None
-ASSETS_PATH = resources.files("flow_grpo.assets")
+ASSETS_PATH = resources.files("grpo.assets")
 
 
 @functools.cache
 def _load_lines(path):
     """
     Load lines from a file. First tries to load from `path` directly, and if that doesn't exist, searches the
-    `flow_grpo/assets` directory for a file named `path`.
+    `grpo/assets` directory for a file named `path`.
     """
     if not os.path.exists(path):
         newpath = ASSETS_PATH.joinpath(path)
     if not os.path.exists(newpath):
-        raise FileNotFoundError(f"Could not find {path} or flow_grpo.assets/{path}")
+        raise FileNotFoundError(f"Could not find {path} or grpo.assets/{path}")
     path = newpath
     with open(path, "r") as f:
         return [line.strip() for line in f.readlines()]

@@ -17,4 +17,4 @@ torchrun \
     --master_addr=${MASTER_ADDR} \
     --master_port=${MASTER_PORT} \
     scripts/train_qwenimage_edit.py \
-    --config config/grpo.py:counting_qwenimage_edit
+    --config config/grpo.py:talk2move

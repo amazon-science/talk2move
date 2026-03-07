@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 from PIL import Image
 from tqdm import tqdm
-from flow_grpo.clip_score import CLIPScore
+from grpo.clip_score import CLIPScore
 
 class ClipOursScorer:
     def __init__(self, device):
