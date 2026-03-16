@@ -40,9 +40,6 @@ def sde_step_with_logprob(
     step_index = [self.index_for_timestep(t) for t in timestep]
     prev_step_index = [step+1 for step in step_index]
     # Force output to stderr and flush immediately
-    # print('timesteps:', timestep)
-    # print('step_index:', step_index)
-    # print('sigmas:', self.sigmas)
     sigma = self.sigmas[step_index].view(-1, *([1] * (len(sample.shape) - 1)))
     sigma_prev = self.sigmas[prev_step_index].view(-1, *([1] * (len(sample.shape) - 1)))
     sigma_max = self.sigmas[1].item()
@@ -103,19 +100,11 @@ def ode_shortcut_step(
     sample=sample.float()
     if prev_sample is not None:
         prev_sample=prev_sample.float()
-    # print('sd3, timesteep??',timestep)
-    # step_index = [self.index_for_timestep(t) for t in timestep]
-    # prev_step_index = [self.index_for_timestep(t) for t in timestep_end]
-    # prev_step_index = [step+1 for step in step_index]
-    # sigma2 = self.sigmas[step_index].view(-1, *([1] * (len(sample.shape) - 1)))
-    # sigma_prev2 = self.sigmas[-1].view(-1, *([1] * (len(sample.shape) - 1)))
-    # sigma_prev = self.sigmas[prev_step_index].view(-1, *([1] * (len(sample.shape) - 1)))
     timestep = timestep / 1000
     timestep_end = timestep_end / 1000
     sigma = timestep.view(-1, *([1] * (len(sample.shape) - 1)))
     sigma_prev = timestep_end.view(-1, *([1] * (len(sample.shape) - 1)))
-    # print('sigmas:', sigma, sigma2)
-    # print('sigma_prevs:', sigma_prev, sigma_prev2)
+
     
     sigma_max = self.sigmas[1].item()
     dt = sigma_prev - sigma

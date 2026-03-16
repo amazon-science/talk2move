@@ -6,10 +6,9 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
-# from flow_grpo.clip_score import CLIPScore
-from flow_grpo.qwen_caller import qwenvl_detection 
+from grpo.qwen_caller import qwenvl_detection 
 
-class ManipulationScorer:
+class PositionScorer:
     def __init__(self, device):
         self.device = device
         self.processor = AutoProcessor.from_pretrained("IDEA-Research/grounding-dino-tiny")
@@ -37,7 +36,7 @@ class ManipulationScorer:
         )
         return [box.tolist() for box in results[0]["boxes"]] if results else []
 
-    def relative_position(self, box_a, box_b, relation):
+    def relative_position(self, box_a, box_b):
         boxes = np.array([box_a, box_b])[:, :4].reshape(2, 2, 2)
         center_a, center_b = boxes.mean(axis=-2)
         dim_a, dim_b = np.abs(np.diff(boxes, axis=-2))[..., 0, :]
@@ -46,34 +45,13 @@ class ManipulationScorer:
         if np.all(np.abs(revised_offset) < 1e-3):
             return 0
         dx, dy = revised_offset / np.linalg.norm(offset)
-        if (dx < -0.01 and 'right' in relation) or (dx > 0.01 and 'left' in relation) :
-            return np.abs(dx)
-        elif (dy < -0.01 and 'down' in relation) or (dy > 0.01 and 'up' in relation):
-            return np.abs(dy)
-        return 0
-
-    # def image_consistency(self, image0, image1):
-    #     with torch.no_grad():
-    #         return self.clip_model.score(image0, image1)
         
-    # def l1_distance(self, image0, image1):
-    #     image0 = image0.convert('RGB')
-    #     image1 = image1.convert('RGB')
-    #     image0 = image0.resize(image1.size)
-    #     image0 = np.array(image0)
-    #     image1 = np.array(image1)
-    #     l1_distance = np.sum(np.abs(image0 - image1))
-    #     num_pixels = image0.shape[0] * image0.shape[1] * image0.shape[2]
-    #     normalized_l1_distance = l1_distance / num_pixels / 255
-    #     return normalized_l1_distance
+        return (np.abs(dx) + np.abs(dy))*0.5
         
     @torch.no_grad()
     def run(self, images, ref_images, prompts, metadatas):
         scores = []
         for image, ref_image, prompt, metadata in zip(images, ref_images, prompts, metadatas):
-            # sim_overall = self.image_consistency(ref_image, image)
-            # sim_overall = int(sim_overall >= 0.9)
-            # l1_distance = self.l1_distance(ref_image, image)
             correct, error_msg = 0, ""
             objectname = metadata['object']
             # objectname = [objectname+'. ']
@@ -81,38 +59,21 @@ class ManipulationScorer:
             boxes_input = self.object_detection(ref_image, [objectname]) 
             boxes_output = self.object_detection(image, [objectname])
 
-            # _, results_input = qwenvl_detection(ref_image, [objectname])
-            # if objectname in results_input.keys() and len(results_input[objectname])>0:
-            #     boxes_input = results_input[objectname]
-            # else:
-            #     boxes_input = []
-            # _, results_output = qwenvl_detection(image, [objectname])
-            # if objectname in results_output.keys() and len(results_output[objectname])>0:
-            #     boxes_output = results_output[objectname]
-            # else:
-            #     boxes_output = []
-
             sim_obj, sim_old = 0, 0
             if not boxes_input or not boxes_output:
                 error_msg = "Missing boxes."
                 correct = 0
             else:
-                correct = self.relative_position(boxes_input[0], boxes_output[0], metadata['direction'])
-                # sim_obj = self.image_consistency(
-                #     ref_image.crop(boxes_input[0]), image.crop(boxes_output[0]))
-                # sim_obj = int(sim_obj >= 0.75)
-                # sim_old = self.image_consistency(
-                #     ref_image.crop(boxes_input[0]), image.crop(boxes_input[0]))
-                # sim_old = int(sim_old < 0.95)
-            # print('correct, sim_overall, l1', correct, sim_overall, l1_distance)
-            total_score = correct #* 0.8 + sim_overall * 0.2 #* (sim_overall + 0.5 * sim_obj + 0.5 * sim_old + (1 - l1_distance)) / 3
+                correct = 1 - self.relative_position(boxes_input[0], boxes_output[0])
+            
+            if 'translation' in metadata['tag']:
+                correct = 1
+            
+            total_score = correct
             scores.append(total_score)
         scores = torch.tensor(scores, device=self.device)
         return scores
-                # if sim_obj < 0.75:
-                #     correct, error_msg = 0, "Object mismatch."
-                # if sim_old > 0.95 or result['Source Location Cleared'] == 0:
-                #     correct, error_msg = 0, "Original object not removed."
+                
 
 
        

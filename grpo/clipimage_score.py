@@ -61,14 +61,3 @@ class CLIPScore(
 
         return similarity
 
-# model = CLIPScore.from_pretrained("RE-N-Y/clipscore-vit-large-patch14") # CLIPScore
-
-# pixels = Image.open("depth_test.png")
-# # pixels = np.array(pixels)
-# # pixels = rearrange(torch.tensor(pixels), "h w c -> 1 c h w") / 255.0
-# image1 = '/path/to/data'
-# image1 = Image.open(image1)
-# image2 = '/path/to/data'
-# image2 = Image.open(image2)
-# score = model.score(image1, image2) # full differentiable reward
-# print(score)
