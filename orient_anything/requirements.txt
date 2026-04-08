@@ -1,5 +1,5 @@
 torch==2.2.1
-transformers==4.38
+transformers==5.0.0rc3
 matplotlib
 pillow==10.2.0
 huggingface-hub==0.26.5
